@@ -1,0 +1,162 @@
+####测试配置文件修改是否正常
+/usr/local/nginx/sbin/nginx -t
+
+###重新加载配置文件
+/usr/local/nginx/sbin/nginx -c /usr/local/nginx/conf/nginx.conf
+#启动
+service nginx start
+#停止
+service nginx stop
+#重启
+service nginx reload 或nginx –s reload
+
+主要配置 server 和 upstream
+
+vim /usr/local/nginx/conf/nginx.conf
+---------------
+
+-----------------------------------
+#==基础配置==#
+user nginx;
+#设置运行用户，当运行NGINX时，进程所使用的用户，则进程拥有该用户对文件或目录的操作权限。
+worker_processes 4;
+#设置工作进程数量，一般情况下工作进程数等于CPU核心数。
+worker_cpu_affinity 0001 0010 0100 1000;
+#设置工作进程绑定CPU核心，一个工作进程使用一个CPU核心，可以减少进程频繁切换导致CPU处理所导致的资源损
+#耗。"0001"四位数表示CPU有四个核心，"1"在第几位表示使用第几个核心。
+worker_rlimit_nofile 102400;
+#设置每个工作进程可同时打开的文件描述符数量。在Linux系统中默认情况下为"1024"，我们可以通过
+#"ulimit -a |grep 'open files'"命令查看，设置此值可突破并发文件数量限制。
+error_log /var/log/nginx/error.log error;
+#设置错误日志文件路径，可设置错误日志记录的级别。
+#错误日志级别有：
+#   debug    调试，将记录详细的大量调试信息，适合开发人员开启
+#   info     信息，记录更多的通知信息，不重要的
+#   notice   通知，记录通知信息，不重要的
+#   warn     警告，记录警告信息
+#   error    错误，记录错误信息
+#   crit     严重，只记录非常严重的错误信息
+pid /run/nginx.pid;
+#设置进程文件路径，运行NGINX会生成一个PID进程文件到指定路径，用于保证进程持久化运行。
+include /usr/share/nginx/modules/*.conf;
+#设置包含的其他配置文件，一些加载NGINX动态模块相关配置文件，由"load_moule"指令控制动态模块的加载。
+
+#==事件配置==#
+events {
+    worker_connections 102400;
+    #设置每个Worker进程可处理的并发连接数量，可根据需求合理配置此值。建议
+    #与"worker_rlimit_nofile"指令的值一致或更小。
+}
+
+#==核心配置==#
+http {
+    include             /etc/nginx/mime.types;
+    #设置还包含其他配置文件，“mime.types”文件，记录MIME类型与文件后缀的映射关系，MIME类型是互联网媒
+    #体类型的缩写。所以该文件是用于WEB服务可以识别的、允许用户上传的这些后缀相关的媒体文件。
+    default_type        text/plain;
+    #设置默认MIME类型，当用户上传一个文件，非“mime.types”文件中记录的后缀文件时的处理方式，则将该文
+    #件识别默认指定MIME类型的文件，"text/plain"表示将会保存为".txt"格式的文件。
+    types_hash_max_size 2048;
+    #设置类型哈希表的大小，单位为字节。用于将MIME类型的数据通过哈希后缓存到内存中，以提高对MIME类型映
+    #射表的读取效率。
+    charset UTF-8;
+    #设置字符集编码，防止NGINX对于中文返回的显示乱码。
+    log_format  main  '$remote_addr - $remote_user [$time_local] "$request" '
+                      '$status $body_bytes_sent "$http_referer" '
+                      '"$http_user_agent" "$http_x_forwarded_for"';
+    #定义日志格式，“main”表示该日志格式名，用于下方“access_log”访问日志中调用
+    #	$remote_addr		远程访问地址
+    #	$remote_user		远程访问用户
+    #	$time_local		访问时间
+    #	$request		请求的URL与HTTP协议
+    #	$status			请求状态，成功为200
+    #	$body_bytes_sent	发送给客户端文件主机内容大小
+    #	$http_referer		从哪个页面连接访问过来的
+    #	$http_user_agent	客户端浏览器的相关信息
+    #	$http_x_forwarded_for	远程访问地址，与remote_addr相同
+    sendfile            on;
+    #启用或禁用"sendfile()"函数的调用，"on" or "off"，"on"表示启用，"off"表示禁用。当线程响应
+    #时，"sendfile()"函数会报告线程数据不在内存中而是在硬盘中，则线程直接去硬盘拿到响应数据直接传送
+    #给用户，而无需调用内存去硬盘拿响应数据，省去了调用内存的步骤，在小型WEB项目中可以提高请求响应效
+    #率，若是重量级WEB项目，为了平衡磁盘IO则不建议开启。我们也可以将此指令称之为高效传输模式。
+    tcp_nopush          on;
+    #启用或禁用TCP_NOPUSH套接字选项，"on" or "off"，"on"表示启用，启用此项的前提是必须开
+    #启"sendfile"，"off"表示禁用。有时候在传输一个响应数据时，可能会产生多个小块数据包传出，可能这个
+    #小块数据包头部大小为30字节，而真正数据信息只有1字节，在高并发环境下会导致网络拥塞、带宽不够用问
+    #题。开启此项则传出的数据包会积累一下在传出，可以防止网络拥塞，减少带宽的占用。
+    tcp_nodelay         on;
+    #启用或禁用TCP_NODELAY套接字选项，"on" or "off"，"on"表示启用，"off"表示禁用。此项与
+    #"tcp_nopush"的功能刚好相反，若开启此项则对于小块数据包不等待立即传输，有时候一个WEB应用期望发
+    #送小块数据时，则建议开启，当“tcp_nopush”和“tcp_nodelay”同时开启时，NGINX会平衡这两个功能的使
+    #用。
+    keepalive_timeout   75s;
+    #设置保持客户端连接活跃状态的超时时间，单位为秒。
+    send_timeout 60s;
+    #设置服务器将响应发送给客户端的超时时间，单位为秒。
+
+    include /etc/nginx/conf.d/*.conf;
+    #设置还包含其他配置文件，我们可以将一些其他配置分离到另外一个文件中处理，避免主配置文件因为配置太
+    #多导致混乱不方便管理，比如下面的"server {}"，在NGINX中我们可以配置多个"server {}"则我们可以将
+    #每个"server {}"分离到另外一个配置文件中，即一个配置文件对应一个WEB站点。
+
+    #==WEB站点配置==#
+    server {
+        listen       80 default_server;
+        #设置监听IPV4的地址与端口，地址为空表示监听所有，“default_server”即默认服务器，DNS映射一个
+        #域名到该主机，但是当用户访问的这个域名与这些WEB虚拟主机绑定的域名都不匹配的情况下，默认由监
+        #听“default_server”的虚拟主机呈现内容。
+        listen       [::]:80 default_server;
+        #设置监听IPV6的地址与端口。
+        server_name  static.test.com;
+        #设置域名绑定，绑定一个域名。
+        access_log  /var/log/nginx/static_access.log  main;
+        #设置访问日志文件路径，用于记录每个访问请求，“main”调用上面日志格式
+        location / {
+        #设置访问位置（URI），即用户访问的URL的尾部部分。当匹配到请求的URI时，则呈现由"{ }"中定义的
+        #内容。location指令针对于匹配URI可以嵌入正则表达式，实现一些高级应用，详细用法请参考《HTTP
+        #配置高级指令》。
+            root	/usr/share/nginx/html;
+            #设置WEB应用根目录。
+    	    index index.html;
+            #设置默认首页文件，当用户访问域名或IP地址是自动索引呈现该文件中的内容，该文件在若为相对路
+    	    #径则会在WEB应用根目录下。
+        }
+        error_page 404 /404.html;
+        #当匹配到响应代码，则将请求重定向到指定的URI。
+        location = /40x.html {
+        #匹配上面重定向的URI，则呈现相关响应代码的会呈现给用户的内容。若"{}"为空则返回默认页面。
+        }
+        error_page 500 502 503 504 /50x.html;
+        location = /50x.html {
+        }
+    }
+}
+------------------------------------------------------------------------------------------
+
+
+
+    upstream mysvr {   
+      server 127.0.0.1:8800;
+	  server 127.0.0.1:8801;
+	  server 127.0.0.1:8802;
+	  server 127.0.0.1:8803;
+	  server 127.0.0.1:8804;
+	  server 127.0.0.1:8805;
+	  server 127.0.0.1:8806;
+	  server 127.0.0.1:8807;
+	  server 127.0.0.1:8808;
+      server 127.0.0.1:8809; backup;  #热备
+    }
+
+        upstream mysvr {
+            server 127.0.0.1:8800;
+            server 127.0.0.1:8801;
+            server 127.0.0.1:8802;
+            server 127.0.0.1:8803;
+            server 127.0.0.1:8804;
+            server 127.0.0.1:8805;
+            server 127.0.0.1:8806;
+            server 127.0.0.1:8807;
+            server 127.0.0.1:8808; backup;
+            server 127.0.0.1:8809; backup;
+        }
