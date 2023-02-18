@@ -51,3 +51,5 @@ vi /etc/sysconfig/iptables
 保存退出后
 systemctl restart iptables.service #重启防火墙使配置生效
 systemctl enable iptables.service #设置防火墙开机启动
+
+#######
